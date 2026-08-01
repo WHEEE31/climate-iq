@@ -66,10 +66,15 @@ Then `http://localhost:5000`. The same image is what you push to any container h
 ### Any plain Node host
 
 ```
-Build command:  npm install && npm run build
+Build command:  npm install --include=dev && npm run build
 Start command:  npm start
 Health check:   /healthz
 ```
+
+`--include=dev` matters. If the platform sets `NODE_ENV=production` (most do),
+npm skips devDependencies — and vite, esbuild, and typescript live there because
+they're only needed at build time. Without the flag the build fails with
+`vite: not found`.
 
 The server reads `PORT` from the environment, which is what every platform sets.
 

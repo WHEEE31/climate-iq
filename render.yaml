@@ -5,7 +5,10 @@ services:
     name: climate-iq
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    # --include=dev is required: NODE_ENV=production below makes npm skip
+    # devDependencies, and vite/esbuild/typescript live there. They're only
+    # needed to build — the runtime image doesn't use them.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:
