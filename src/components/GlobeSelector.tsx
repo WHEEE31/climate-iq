@@ -63,9 +63,9 @@ function GlobeMap({
 
     map.on("load", () => {
       // setProjection and setFog are optional across maplibre-gl versions and
-      // builds. Feature-detect through a widened type rather than a
-      // @ts-expect-error directive: the directive itself becomes a compile
-      // error the moment the method IS present in the installed typings.
+      // builds, so feature-detect through a widened type. A suppression
+      // comment would be worse here: it turns into a compile error itself the
+      // moment the method IS present in the installed typings.
       const optional = map as maplibregl.Map & {
         setProjection?: (spec: unknown) => void;
         setFog?: (spec: unknown) => void;
@@ -109,14 +109,27 @@ function GlobeMap({
         const data = (await resp.json()) as {
           address: string | null;
           countryCode: string | null;
+          unmapped?: boolean;
+          lookupFailed?: boolean;
         };
 
-        // Only accept clicks that resolve to a land area with coverage.
-        if (!data.countryCode || !data.address) {
-          setWarning("Please click a land area with coverage.");
+        // Only refuse the click when the geocoder positively reports that
+        // nothing is mapped here (ocean, unsurveyed land). If the lookup
+        // simply failed, keep going with raw coordinates — the assessment
+        // endpoint accepts a "lat, lng" string, so every risk score still
+        // works, we just can't show a street address.
+        if (data.unmapped) {
+          setWarning("No land at that point — try clicking a continent or island.");
           onSelectionStatusChange({ isValid: false, message: "Click land to select a location.", address: null });
           setIsGeocoding(false);
           return;
+        }
+
+        const coordLabel = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const resolvedAddress = data.address ?? coordLabel;
+
+        if (!data.address) {
+          setWarning("Address lookup unavailable — using coordinates instead.");
         }
 
         // Drop / replace the pin
@@ -128,12 +141,15 @@ function GlobeMap({
         // Fly to location
         map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 6), duration: 900, essential: true });
 
-        const selectedAddress = data.address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        onSelectRef.current(selectedAddress);
-        onSelectionStatusChange({ isValid: true, message: null, address: selectedAddress });
+        onSelectRef.current(resolvedAddress);
+        onSelectionStatusChange({ isValid: true, message: null, address: resolvedAddress });
       } catch {
-        setWarning("Please click a land area with coverage.");
-        onSelectionStatusChange({ isValid: false, message: "Click land to select a location.", address: null });
+        // The request to our own server failed. Fall back to coordinates
+        // rather than blocking the user entirely.
+        const coordLabel = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        setWarning("Address lookup unavailable — using coordinates instead.");
+        onSelectRef.current(coordLabel);
+        onSelectionStatusChange({ isValid: true, message: null, address: coordLabel });
       } finally {
         setIsGeocoding(false);
       }

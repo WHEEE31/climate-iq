@@ -15,6 +15,7 @@ import {
   generateSummary,
 } from './climate/scoring';
 import { generateRecommendations } from './climate/recommendations';
+import { reverseLookup } from './climate/providers';
 import { ADDRESS_MIN_LENGTH, type ClimateRiskResult } from '../shared/types';
 
 export const apiRouter: Router = Router();
@@ -140,61 +141,44 @@ apiRouter.get('/reverse-geocode', async (req: Request, res: Response) => {
     return;
   }
 
-  try {
-    const url = new URL('https://nominatim.openstreetmap.org/reverse');
-    url.searchParams.set('lat', String(lat));
-    url.searchParams.set('lon', String(lng));
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('addressdetails', '1');
-    url.searchParams.set('accept-language', 'en');
+  const outcome = await reverseLookup(lat, lng);
 
-    const response = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    if (!response.ok) throw new Error(`Nominatim responded with ${response.status}`);
-
-    const data = (await response.json()) as {
-      error?: string;
-      display_name?: string;
-      address?: Record<string, string | undefined>;
-    };
-
-    if (data.error || !data.address) {
-      res.json({ address: null, countryCode: null, coords: { lat, lng } });
-      return;
-    }
-
-    const addr = data.address;
-    const parts: string[] = [];
-
-    if (addr.house_number && addr.road) parts.push(`${addr.house_number} ${addr.road}`);
-    else if (addr.road) parts.push(addr.road);
-
-    const locality = addr.city || addr.town || addr.village || addr.county;
-    if (locality) parts.push(locality);
-    if (addr.state) parts.push(addr.state);
-    if (addr.postcode) parts.push(addr.postcode);
-
-    const countryCode = (addr.country_code ?? '').toUpperCase();
-    if (countryCode && countryCode !== 'US' && addr.country) parts.push(addr.country);
-
+  if (outcome.place) {
     res.json({
-      address: parts.length > 0 ? parts.join(', ') : (data.display_name ?? null),
-      countryCode,
+      address: outcome.place.normalizedAddress,
+      countryCode: outcome.place.countryCode,
       coords: { lat, lng },
+      unmapped: false,
+      lookupFailed: false,
+      provider: outcome.provider,
     });
-  } catch (err) {
-    // Non-fatal: the client falls back to raw coordinates.
-    logger.warn({ err, lat, lng }, 'Reverse geocode failed');
-    res.json({ address: null, countryCode: null, coords: { lat, lng } });
+    return;
   }
+
+  if (outcome.allProvidersFailed) {
+    // Every provider errored. NOT the same as "nothing is here" — the client
+    // falls back to raw coordinates, which still yields a full assessment.
+    logger.warn({ lat, lng }, 'All geocoding providers failed — client will use raw coordinates');
+    res.json({
+      address: null,
+      countryCode: null,
+      coords: { lat, lng },
+      unmapped: false,
+      lookupFailed: true,
+    });
+    return;
+  }
+
+  // A provider answered and reported nothing mapped here: ocean, or unsurveyed.
+  res.json({
+    address: null,
+    countryCode: null,
+    coords: { lat, lng },
+    unmapped: true,
+    lookupFailed: false,
+  });
 });
 
-const USER_AGENT =
-  process.env.NOMINATIM_USER_AGENT ??
-  'ClimateIQ/1.0 (climate risk assessment; contact: noreply@example.com)';
 
 function pick(factor: {
   score: number;

@@ -92,6 +92,7 @@ export default function Home() {
             selectionReady={selectionReady}
             selectionMessage={selectionMessage}
             onSelectionStatusChange={handleSelectionStatusChange}
+            hasManualAddress={hasManualAddress}
             setHasManualAddress={setHasManualAddress}
           />
         )}
@@ -129,6 +130,7 @@ function SearcherView({
   selectionReady,
   selectionMessage,
   onSelectionStatusChange,
+  hasManualAddress,
   setHasManualAddress,
 }: {
   address: string;
@@ -137,6 +139,7 @@ function SearcherView({
   selectionReady: boolean;
   selectionMessage: string | null;
   onSelectionStatusChange: (state: { isValid: boolean; message: string | null; address: string | null }) => void;
+  hasManualAddress: boolean;
   setHasManualAddress: (val: boolean) => void;
 }) {
   return (

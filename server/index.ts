@@ -8,6 +8,49 @@ import { apiRouter } from './routes';
 import { logger } from './logger';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Load .env before anything else reads process.env.
+ *
+ * Node does not do this on its own — that behaviour comes from the dotenv
+ * package. Node 20.12+ ships process.loadEnvFile, so we can do it with zero
+ * dependencies. Values already set in the real environment win, which is what
+ * we want: hosting platforms inject their own config and must not be
+ * overridden by a stray .env in the image.
+ */
+function loadDotEnv(): void {
+  // Check the working directory first (both `npm run dev` and `npm start` run
+  // from the project root), then next to the bundle as a fallback.
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(here, '..', '.env'),
+    path.resolve(here, '..', '..', '.env'),
+  ];
+  const envPath = candidates.find((p) => fs.existsSync(p));
+  try {
+    if (!envPath) return;
+    const load = (process as NodeJS.Process & { loadEnvFile?: (p: string) => void })
+      .loadEnvFile;
+    if (typeof load === 'function') {
+      load.call(process, envPath);
+      return;
+    }
+    // Fallback for Node < 20.12: parse the simple KEY=VALUE form ourselves.
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const value = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      if (key && process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch {
+    // A malformed .env should never stop the server from booting.
+  }
+}
+
+loadDotEnv();
 const isProduction = process.env.NODE_ENV === 'production';
 
 /**
@@ -82,7 +125,14 @@ async function main(): Promise<void> {
 
   const server = app.listen(PORT, HOST, () => {
     logger.info(
-      { url: `http://localhost:${PORT}`, mode: isProduction ? 'production' : 'development' },
+      {
+        url: `http://localhost:${PORT}`,
+        mode: isProduction ? 'production' : 'development',
+        // Surfaced on purpose: a missing or placeholder value here is the most
+        // common reason geocoding starts failing.
+        geocoderUserAgent:
+          process.env.NOMINATIM_USER_AGENT ?? '(default placeholder — set NOMINATIM_USER_AGENT)',
+      },
       'ClimateIQ is running',
     );
   });

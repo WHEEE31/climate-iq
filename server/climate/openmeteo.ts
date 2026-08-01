@@ -42,7 +42,10 @@ export async function fetchMeteoData(
     logger.debug({ lat, lng }, "Fetching Open-Meteo 90-day weather history");
 
     const res = await fetch(url.toString(), {
-      headers: { "User-Agent": "ClimateIQ/1.0 (climateiq.app)" },
+      headers: {
+        "User-Agent":
+          process.env.NOMINATIM_USER_AGENT ?? "ClimateIQ/1.0 (climate risk assessment)",
+      },
       signal: AbortSignal.timeout(15000),
     });
 
