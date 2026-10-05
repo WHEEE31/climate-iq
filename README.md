@@ -1,5 +1,9 @@
 # ClimateIQ
 
+> **Superseded by [ClimateMark](https://github.com/WHEEE31/climatemark)**, a rewrite that adds
+> per-hazard confidence tiers, long-run climate projections, and property-aware
+> recommendations. This repository is kept as the first version.
+
 Estimates a property's climate risk — flood, severe storms, wildfire, extreme heat,
 drought, and air quality — from free public datasets. No API keys, no database,
 no accounts.
